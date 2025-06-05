@@ -25,6 +25,9 @@ ENV/
 # Test files and generated output
 expanded*.md
 test_template.md
+temp.md
+final_test.md
+cpp_threads_template.md
 
 # OS files
 .DS_Store
@@ -37,4 +40,7 @@ Thumbs.db
 # Coverage reports
 htmlcov/
 .coverage
-.pytest_cache/ 
+.pytest_cache/
+
+# Temporary pyproject.toml (we use setup.py)
+pyproject.toml 
