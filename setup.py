@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="jexpand",
-    version="1.0.0",
+    version="1.0.1",
     description="Enhanced file expansion using Jinja2 templates",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -35,4 +35,4 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
     ],
-) 
+)
