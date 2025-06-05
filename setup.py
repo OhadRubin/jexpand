@@ -7,14 +7,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="jexpand",
-    version="1.0.1",
+    version="1.0.2",
     description="Enhanced file expansion using Jinja2 templates",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     packages=find_packages(),
     install_requires=[
         "jinja2>=3.0.0",
-        "fire>=0.4.0",
     ],
     entry_points={
         "console_scripts": [

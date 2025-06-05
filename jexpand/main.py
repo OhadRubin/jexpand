@@ -3,13 +3,10 @@
 Enhanced file expansion using Jinja2 templates with flexible functionality.
 
 Example usage:
-
-
-
-jexpand template.md > expanded.md
-
-
-
+    jexpand template.md                           # Print to stdout
+    jexpand template.md -o expanded.md            # Write to file
+    jexpand template.md --output expanded.md      # Write to file
+    jexpand template.md --strict=False            # Non-strict mode
 
 This will process Jinja2 templates with custom functions for file inclusion,
 code formatting, and more advanced template features.
@@ -48,9 +45,9 @@ You will be given several files, your goal is to convert the implementation.
 
 import os
 import sys
+import argparse
 from pathlib import Path
-import fire
-from jinja2 import Environment, FileSystemLoader, BaseLoader, Template
+from jinja2 import Environment, FileSystemLoader, BaseLoader
 from jinja2.exceptions import TemplateNotFound
 
 
@@ -113,7 +110,7 @@ class JinjaFileExpander:
                     raise FileNotFoundError(f"File {file_path} does not exist")
                 return default or f"<!-- File not found: {file_path} -->"
 
-            with open(file_path, 'r', encoding=encoding) as f:
+            with open(file_path, "r", encoding=encoding) as f:
                 return f.read()
         except Exception as e:
             if self.strict_mode:
@@ -187,15 +184,129 @@ class JinjaFileExpander:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(result)
         else:
-            print(result)
+            print(result, end="")  # Don't add extra newline
+
+        return result
+
+    def simple_expand(self, template_path, context=None, output_path=None):
+        """
+        Simple expansion with {file_path} syntax conversion to Jinja2
+
+        Converts {/path/to/file} to {{ include_file('/path/to/file') }}
+        for backward compatibility and simpler template syntax.
+        """
+        context = context or {}
+
+        # Read the template file
+        with open(template_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Convert {/path/to/file} to {{ include_file('/path/to/file') }}
+        import re
+
+        converted = re.sub(r"\{([^}]+)\}", r"{{ include_file('\1') }}", content)
+
+        # Expand using the converted template
+        result = self.expand_string(converted, context)
+
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(result)
+        else:
+            print(result, end="")
 
         return result
 
 
+# def expand_file(file_path, output_path=None, strict=True, template_dir=None):
+#         expander = JinjaFileExpander(
+#             template_dir=template_dir, strict_mode=strict
+#         )
+
+#         # Expand template
+#         expander.expand_file(
+#             template_path=file_path, context={}, output_path=output_path
+#         )
+
+
+def main():
+    """Main entry point with argparse"""
+    parser = argparse.ArgumentParser(
+        description="Enhanced file expansion using Jinja2 templates",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  jexpand template.md                    # Print to stdout
+  jexpand template.md -o expanded.md     # Write to file
+  jexpand template.md --output result.md # Write to file
+  jexpand template.md --no-strict        # Non-strict mode (don't fail on missing files)
+
+Template Features:
+  {{ include_file('path/to/file') }}           # Include file contents
+  {{ include_file('file.py') | code_block('python') }}  # Include with syntax highlighting
+  {% if file_exists('optional.txt') %}        # Conditional inclusion
+  {{ file_size('data.csv') }}                 # File size in bytes
+  {{ basename('/path/to/file.txt') }}         # Get filename
+        """,
+    )
+
+    parser.add_argument("input_file", help="Path to the template file to expand")
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output_file",
+        help="Output file path (default: print to stdout)",
+    )
+
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=True,
+        help="Strict mode: fail on missing files (default: True)",
+    )
+
+    parser.add_argument(
+        "--no-strict",
+        action="store_false",
+        dest="strict",
+        help="Non-strict mode: show placeholders for missing files",
+    )
+
+    parser.add_argument(
+        "--template-dir",
+        help="Directory to search for template files (default: current directory)",
+    )
+
+    parser.add_argument("--version", action="version", version="jexpand 1.0.2")
+
+    args = parser.parse_args()
+
+    # Check if input file exists
+    if not os.path.isfile(args.input_file):
+        print(f"Error: Template file '{args.input_file}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Create expander
+    try:
+        expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
+
+        if args.output_file:
+            print(
+                f"Template expanded successfully to: {args.output_file}",
+                file=sys.stderr,
+            )
+
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+
+# Backward compatibility function for fire-based usage
 def expand_file(file_path, output_path=None, strict=True, **context):
     """
-    Main function for command line usage
-    
+    Backward compatibility function for fire-based usage
+
     Args:
         file_path: Path to template file
         output_path: Optional output file path
@@ -224,4 +335,4 @@ def simple_expand(file_path):
 
 
 if __name__ == "__main__":
-    fire.Fire(expand_file)
+    main()

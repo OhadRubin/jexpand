@@ -5,29 +5,59 @@ Enhanced file expansion using Jinja2 templates with flexible functionality for i
 ## Installation
 
 ```bash
-pip install -e .
+pip install jexpand
 ```
 
 ## Usage
 
-### Command Line
+### Command Line Interface
+
+JExpand now uses a modern argparse-based CLI with explicit input/output handling:
 
 ```bash
-# Basic usage
-jexpand template.md > expanded.md
+# Print to stdout
+jexpand template.md
 
-# With output file
-jexpand template.md --output_path expanded.md
+# Write to file
+jexpand template.md -o expanded.md
+jexpand template.md --output expanded.md
 
-# Non-strict mode (won't fail on missing files)
-jexpand template.md --strict=False
+# Non-strict mode (don't fail on missing files)
+jexpand template.md --no-strict
+
+# Specify template directory
+jexpand template.md --template-dir /path/to/templates
+
+# Show help
+jexpand --help
 ```
 
 ### Python Module
 
 ```bash
 # Run as module
-python -m jexpand template.md > expanded.md
+python -m jexpand template.md -o expanded.md
+```
+
+### Python API
+
+```python
+from jexpand import JinjaFileExpander
+
+# Create expander
+expander = JinjaFileExpander(strict_mode=True)
+
+# Expand to file
+expander.expand_file(
+    template_path="template.md",
+    output_path="output.md"
+)
+
+# Expand to string
+result = expander.expand_file("template.md")
+
+# Simple expansion with {file} syntax
+result = expander.simple_expand("simple_template.md")
 ```
 
 ### Template Features
@@ -69,7 +99,89 @@ No configuration file found.
 ### {{ basename(file_path) }}
 {{ include_file(file_path) | indent(4) }}
 {% endfor %}
+
+## File Information
+{% for file in ['app.py', 'utils.py'] %}
+{% if file_exists(file) %}
+- **{{ file }}**: {{ file_size(file) }} bytes
+{% endif %}
+{% endfor %}
 ```
+
+### Simple Syntax (Backward Compatibility)
+
+JExpand also supports a simpler `{file_path}` syntax that gets converted to Jinja2:
+
+```python
+from jexpand import JinjaFileExpander
+
+expander = JinjaFileExpander()
+# Converts {/path/to/file} to {{ include_file('/path/to/file') }}
+expander.simple_expand("simple_template.md")
+```
+
+## Advanced Usage
+
+### Programmatic Generation
+
+You can use jexpand programmatically to generate documentation:
+
+```python
+#!/usr/bin/env python3
+from jexpand import JinjaFileExpander
+from pathlib import Path
+
+def generate_docs(source_dir, output_dir):
+    """Generate documentation for all source files."""
+    expander = JinjaFileExpander(strict_mode=True)
+    
+    for source_file in Path(source_dir).glob("*.py"):
+        template_content = f"""
+# {source_file.name} Documentation
+
+## Source Code
+{{{{ include_file('{source_file}') | code_block('python') }}}}
+
+## Analysis
+**File:** {source_file.name}
+**Size:** {{{{ file_size('{source_file}') }}}} bytes
+"""
+        
+        # Expand template
+        result = expander.expand_string(template_content)
+        
+        # Write to output
+        output_file = Path(output_dir) / f"{source_file.stem}_docs.md"
+        with open(output_file, 'w') as f:
+            f.write(result)
+
+# Usage
+generate_docs("src/", "docs/")
+```
+
+## Recent Improvements (v1.0.2)
+
+### Enhanced CLI Interface
+- **Modern argparse-based CLI** replacing the previous fire-based interface
+- **Explicit input/output handling** with `-o`/`--output` flags
+- **Better error messages** and help text
+- **Proper exit codes** for scripting
+
+### Bug Fixes
+- **Fixed double printing issue** that caused duplicated output
+- **Improved absolute path handling** for template files
+- **Fixed Template constructor** compatibility issues
+- **Removed subprocess overhead** in programmatic usage
+
+### Performance Improvements
+- **Direct import support** - no subprocess calls needed
+- **Cleaner output handling** - no extra newlines or duplication
+- **Reduced dependencies** - removed fire dependency
+
+### Backward Compatibility
+- **Simple expansion syntax** still supported via `simple_expand()`
+- **Legacy `expand_file()` function** remains available
+- **All existing templates** continue to work
 
 ## Development
 
@@ -88,13 +200,24 @@ jexpand --help
 ```
 jexpand/
 ├── jexpand/
-│   ├── __init__.py      # Main package code
-│   └── __main__.py      # Module entry point
-├── pyproject.toml       # Package configuration
-├── README.md           # This file
-└── setup.py            # Setuptools configuration
+│   ├── __init__.py      # Package exports and main entry point
+│   ├── __main__.py      # Module entry point for python -m jexpand
+│   └── main.py          # Core functionality and CLI
+├── setup.py             # Package configuration
+├── README.md            # This file
+└── .gitignore          # Git ignore rules
 ```
+
+## Examples
+
+See the `examples/` directory (if present) or check the GitHub repository for real-world usage examples.
 
 ## License
 
-MIT License 
+MIT License
+
+## Links
+
+- **PyPI**: https://pypi.org/project/jexpand/
+- **GitHub**: https://github.com/OhadRubin/jexpand
+- **Issues**: https://github.com/OhadRubin/jexpand/issues 
