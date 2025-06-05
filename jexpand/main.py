@@ -73,19 +73,19 @@ class JinjaFileExpander:
             strict_mode: If True, raises errors for missing files. If False, returns placeholder text.
         """
         self.strict_mode = strict_mode
-        
+
         if template_dir:
             loader = FileSystemLoader(template_dir)
         else:
             loader = FileSystemLoader(os.getcwd())
-            
+
         self.env = Environment(
             loader=loader,
             trim_blocks=True,
             lstrip_blocks=True,
             keep_trailing_newline=True
         )
-        
+
         # Register custom functions
         self.env.globals.update({
             'include_file': self._include_file,
@@ -95,14 +95,14 @@ class JinjaFileExpander:
             'basename': self._basename,
             'dirname': self._dirname,
         })
-        
+
         # Register custom filters
         self.env.filters.update({
             'code_block': self._code_block_filter,
             'indent': self._indent_filter,
             'comment_out': self._comment_out_filter,
         })
-    
+
     def _include_file(self, file_path, encoding='utf-8', default=''):
         """Include the contents of a file"""
         if file_path.startswith('~'):
@@ -112,76 +112,83 @@ class JinjaFileExpander:
                 if self.strict_mode:
                     raise FileNotFoundError(f"File {file_path} does not exist")
                 return default or f"<!-- File not found: {file_path} -->"
-            
+
             with open(file_path, 'r', encoding=encoding) as f:
                 return f.read()
         except Exception as e:
             if self.strict_mode:
                 raise
             return default or f"<!-- Error reading file {file_path}: {str(e)} -->"
-    
+
     def _file_exists(self, file_path):
         """Check if a file exists"""
         return os.path.isfile(file_path)
-    
+
     def _file_size(self, file_path):
         """Get file size in bytes"""
         try:
             return os.path.getsize(file_path)
         except:
             return 0
-    
+
     def _file_extension(self, file_path):
         """Get file extension"""
         return Path(file_path).suffix
-    
+
     def _basename(self, file_path):
         """Get basename of file"""
         return os.path.basename(file_path)
-    
+
     def _dirname(self, file_path):
         """Get directory name of file"""
         return os.path.dirname(file_path)
-    
+
     def _code_block_filter(self, content, language=''):
         """Wrap content in markdown code block"""
         return f"```{language}\n{content}\n```"
-    
+
     def _indent_filter(self, content, spaces=4):
         """Indent each line with specified number of spaces"""
         indent = ' ' * spaces
         return '\n'.join(indent + line for line in content.splitlines())
-    
+
     def _comment_out_filter(self, content, comment_char='#'):
         """Comment out each line"""
         return '\n'.join(f"{comment_char} {line}" for line in content.splitlines())
-    
+
     def expand_string(self, template_string, context=None):
         """Expand a template string"""
         context = context or {}
-        template = Template(template_string, environment=self.env)
+        template = self.env.from_string(template_string)
         return template.render(**context)
-    
+
     def expand_file(self, template_path, context=None, output_path=None):
         """Expand a template file"""
         context = context or {}
-        
-        try:
-            template = self.env.get_template(os.path.basename(template_path))
-        except TemplateNotFound:
-            # If not found in template directory, try direct path
-            with open(template_path, 'r', encoding='utf-8') as f:
+
+        # If absolute path provided, read directly
+        if os.path.isabs(template_path):
+            with open(template_path, "r", encoding="utf-8") as f:
                 template_content = f.read()
-            template = Template(template_content, environment=self.env)
-        
+            template = self.env.from_string(template_content)
+        else:
+            # Try relative path in template directory first
+            try:
+                template = self.env.get_template(os.path.basename(template_path))
+            except TemplateNotFound:
+                # If not found in template directory, try direct path
+                with open(template_path, "r", encoding="utf-8") as f:
+                    template_content = f.read()
+                template = self.env.from_string(template_content)
+
         result = template.render(**context)
-        
+
         if output_path:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(result)
         else:
             print(result)
-        
+
         return result
 
 
