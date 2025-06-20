@@ -1,0 +1,6 @@
+This is file2.txt
+It contains plain text content.
+
+Line 1: Documentation sample
+Line 2: Configuration example
+Line 3: Data processing notes

@@ -1,0 +1,9 @@
+Hello, World!
+This is a sample file for testing the include_file function.
+It contains multiple lines of text.
+
+Line 5: Special characters !@#$%^&*()
+Line 6: Unicode characters: áéíóú ñ 中文 🚀
+
+def hello_function():
+    return "Hello from Python!"
