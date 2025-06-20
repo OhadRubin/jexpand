@@ -596,6 +596,8 @@ Template Features:
 
     # Create expander
     try:
+        # expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
+        
         expander = JinjaFileExpander(template_dir=args.template_dir, strict_mode=args.strict)
         
         if args.intermediate_file:
