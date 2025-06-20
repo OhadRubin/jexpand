@@ -78,6 +78,9 @@ JExpand supports powerful Jinja2 templates with custom functions and filters:
 - `code_block(language)` - Wrap content in markdown code block
 - `indent(spaces)` - Indent each line with specified spaces
 - `comment_out(comment_char)` - Comment out each line
+- `line_numbers(format='short')` - Add line numbers to content
+  - `format='short'`: outputs as "1 | content"
+  - `format='full'`: outputs as "line 1 | content"
 
 #### Example Template
 
@@ -86,6 +89,9 @@ JExpand supports powerful Jinja2 templates with custom functions and filters:
 
 ## Source Implementation
 {{ include_file('src/main.py') | code_block('python') }}
+
+## Source with Line Numbers
+{{ include_file('src/main.py') | line_numbers | code_block('python') }}
 
 ## Configuration
 {% if file_exists('config.yaml') %}
@@ -214,7 +220,7 @@ See the `examples/` directory (if present) or check the GitHub repository for re
 
 ## License
 
-MIT License
+MIT License 
 
 ## Links
 

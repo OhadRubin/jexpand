@@ -34,6 +34,16 @@ You will be given several files, your goal is to convert the implementation.
 </optional_file>
 {% endif %}
 
+<!-- Include all files from a folder -->
+<all_python_files>
+{{ include_folder('/path/to/python/files', pattern='*.py', format_as='blocks') }}
+</all_python_files>
+
+<!-- Include all files recursively -->
+<all_source_files>
+{{ include_folder('/path/to/source', pattern='*', recursive=true, format_as='blocks') }}
+</all_source_files>
+
 <!-- Loop through multiple files -->
 {% for file_path in ['/path/file1.py', '/path/file2.py'] %}
 <{{ loop.index }}>
@@ -84,21 +94,27 @@ class JinjaFileExpander:
         )
 
         # Register custom functions
-        self.env.globals.update({
-            'include_file': self._include_file,
-            'file_exists': self._file_exists,
-            'file_size': self._file_size,
-            'file_extension': self._file_extension,
-            'basename': self._basename,
-            'dirname': self._dirname,
-        })
+        self.env.globals.update(
+            {
+                "include_file": self._include_file,
+                "include_folder": self._include_folder,
+                "file_exists": self._file_exists,
+                "file_size": self._file_size,
+                "file_extension": self._file_extension,
+                "basename": self._basename,
+                "dirname": self._dirname,
+            }
+        )
 
         # Register custom filters
-        self.env.filters.update({
-            'code_block': self._code_block_filter,
-            'indent': self._indent_filter,
-            'comment_out': self._comment_out_filter,
-        })
+        self.env.filters.update(
+            {
+                "code_block": self._code_block_filter,
+                "indent": self._indent_filter,
+                "comment_out": self._comment_out_filter,
+                "line_numbers": self._line_numbers_filter,
+            }
+        )
 
     def _include_file(self, file_path, encoding='utf-8', default=''):
         """Include the contents of a file"""
@@ -116,6 +132,127 @@ class JinjaFileExpander:
             if self.strict_mode:
                 raise
             return default or f"<!-- Error reading file {file_path}: {str(e)} -->"
+
+    def _include_folder(
+        self,
+        folder_path,
+        pattern="*",
+        recursive=False,
+        format_as="xml",
+        separator="\n\n",
+        encoding="utf-8",
+        include_folder_name=True,
+    ):
+        """
+        Include contents of all files in a folder
+
+        Args:
+            folder_path: Path to the folder
+            pattern: File pattern to match (e.g., '*.py', '*.txt', '*')
+            recursive: If True, search subdirectories recursively
+            format_as: How to format the output:
+                - 'content': Just concatenated file contents
+                - 'blocks': Each file wrapped in a labeled block
+                - 'dict': Return as dictionary with filename: content pairs
+            separator: String to separate file contents (only for 'content' format)
+            encoding: File encoding to use
+        """
+        import glob
+
+        if folder_path.startswith("~"):
+            folder_path = os.path.expanduser(folder_path)
+
+        try:
+            if not os.path.isdir(folder_path):
+                if self.strict_mode:
+                    raise FileNotFoundError(f"Folder {folder_path} does not exist")
+                return f"<!-- Folder not found: {folder_path} -->"
+
+            # Build glob pattern
+            if recursive:
+                glob_pattern = os.path.join(folder_path, "**", pattern)
+                file_paths = glob.glob(glob_pattern, recursive=True)
+            else:
+                glob_pattern = os.path.join(folder_path, pattern)
+                file_paths = glob.glob(glob_pattern)
+
+            # Filter to only include files (not directories)
+            file_paths = [f for f in file_paths if os.path.isfile(f)]
+            file_paths.sort()  # Sort for consistent ordering
+
+            if not file_paths:
+                message = f"<!-- No files found matching pattern '{pattern}' in {folder_path} -->"
+                if self.strict_mode:
+                    return message
+                return message
+
+            # Process files based on format
+            if format_as == "dict":
+                result = {}
+                for file_path in file_paths:
+                    try:
+                        with open(file_path, "r", encoding=encoding) as f:
+                            relative_path = os.path.relpath(file_path, folder_path)
+                            result[relative_path] = f.read()
+                    except Exception as e:
+                        if self.strict_mode:
+                            raise
+                        result[relative_path] = f"<!-- Error reading file: {str(e)} -->"
+                return result
+            elif format_as == "xml":
+                xml_content = []
+                for file_path in file_paths:
+                    try:
+                        with open(file_path, "r", encoding=encoding) as f:
+                            content = f.read()
+                            relative_path = os.path.relpath(file_path, folder_path)
+                            if include_folder_name:
+                                base_name = os.path.basename(folder_path)
+                                relative_path = f"{base_name}/{relative_path}"
+                            xml_content.append(f"<file path='{relative_path}'>")
+                            xml_content.append(content)
+                            xml_content.append("</file>")
+                    except Exception as e:
+                        if self.strict_mode:
+                            raise
+                        xml_content.append(f"<file path='{relative_path}'>")
+                        xml_content.append(f"<!-- Error reading file: {str(e)} -->")
+                        xml_content.append("</file>")
+                return "\n\n".join(xml_content)
+
+            elif format_as == "blocks":
+                blocks = []
+                for file_path in file_paths:
+                    try:
+                        with open(file_path, "r", encoding=encoding) as f:
+                            content = f.read()
+                            relative_path = os.path.relpath(file_path, folder_path)
+                            block = f"<!-- File: {relative_path} -->\n{content}"
+                            blocks.append(block)
+                    except Exception as e:
+                        if self.strict_mode:
+                            raise
+                        error_msg = f"<!-- File: {relative_path} - Error: {str(e)} -->"
+                        blocks.append(error_msg)
+                return "\n\n".join(blocks)
+
+            else:  # format_as == 'content'
+                contents = []
+                for file_path in file_paths:
+                    try:
+                        with open(file_path, "r", encoding=encoding) as f:
+                            contents.append(f.read())
+                    except Exception as e:
+                        if self.strict_mode:
+                            raise
+                        error_msg = f"<!-- Error reading {file_path}: {str(e)} -->"
+                        contents.append(error_msg)
+                return separator.join(contents)
+
+        except Exception as e:
+            if self.strict_mode:
+                raise
+            return f"<!-- Error processing folder {folder_path}: {str(e)} -->"
 
     def _file_exists(self, file_path):
         """Check if a file exists"""
@@ -153,6 +290,23 @@ class JinjaFileExpander:
         """Comment out each line"""
         return '\n'.join(f"{comment_char} {line}" for line in content.splitlines())
 
+    def _line_numbers_filter(self, content, format="short"):
+        """
+        Add line numbers to content
+
+        Args:
+            content: The text content to add line numbers to
+            format: How to format line numbers:
+                - "full": "line 1 | content"
+                - "short": "1 | content"
+        """
+        lines = content.splitlines()
+        if format == "full":
+            numbered_lines = [f"line {i+1} | {line}" for i, line in enumerate(lines)]
+        else:  # short format
+            numbered_lines = [f"{i+1} | {line}" for i, line in enumerate(lines)]
+        return "\n".join(numbered_lines)
+
     def expand_string(self, template_string, context=None):
         """Expand a template string"""
         context = context or {}
@@ -163,21 +317,45 @@ class JinjaFileExpander:
         """Expand a template file"""
         context = context or {}
 
-        # If absolute path provided, read directly
+        # Read the template content directly
         if os.path.isabs(template_path):
             with open(template_path, "r", encoding="utf-8") as f:
                 template_content = f.read()
-            template = self.env.from_string(template_content)
         else:
-            # Try relative path in template directory first
+            # Try relative path first, then direct path
             try:
-                template = self.env.get_template(os.path.basename(template_path))
-            except TemplateNotFound:
-                # If not found in template directory, try direct path
+                # Check if file exists in template directory
+                template_file_path = os.path.join(
+                    (
+                        self.env.loader.searchpath[0]
+                        if hasattr(self.env.loader, "searchpath")
+                        else os.getcwd()
+                    ),
+                    os.path.basename(template_path),
+                )
+                if os.path.isfile(template_file_path):
+                    with open(template_file_path, "r", encoding="utf-8") as f:
+                        template_content = f.read()
+                else:
+                    # Try direct path
+                    with open(template_path, "r", encoding="utf-8") as f:
+                        template_content = f.read()
+            except:
+                # Fallback to direct path
                 with open(template_path, "r", encoding="utf-8") as f:
                     template_content = f.read()
-                template = self.env.from_string(template_content)
 
+        # Auto-detect and convert old {file_path} syntax to Jinja2
+        import re
+
+        # Convert standalone {file_path} to {{ include_file('file_path') }}
+        # Only match single braces that are not part of double braces
+        template_content = re.sub(
+            r"(?<!\{)\{([^{}]+)\}(?!\})", r"{{ include_file('\1') }}", template_content
+        )
+
+        # Create template from the (possibly converted) content
+        template = self.env.from_string(template_content)
         result = template.render(**context)
 
         if output_path:
@@ -244,6 +422,9 @@ Examples:
 Template Features:
   {{ include_file('path/to/file') }}           # Include file contents
   {{ include_file('file.py') | code_block('python') }}  # Include with syntax highlighting
+  {{ include_folder('path/to/folder') }}       # Include all files in folder
+  {{ include_folder('src', pattern='*.py') }}  # Include Python files only
+  {{ include_folder('src', recursive=true, format_as='blocks') }}  # Recursive with file labels
   {% if file_exists('optional.txt') %}        # Conditional inclusion
   {{ file_size('data.csv') }}                 # File size in bytes
   {{ basename('/path/to/file.txt') }}         # Get filename
@@ -278,7 +459,7 @@ Template Features:
         help="Directory to search for template files (default: current directory)",
     )
 
-    parser.add_argument("--version", action="version", version="jexpand 1.0.2")
+    parser.add_argument("--version", action="version", version="jexpand 1.0.3")
 
     args = parser.parse_args()
 
@@ -298,12 +479,14 @@ Template Features:
             )
 
     except Exception as e:
+        import traceback
         print(f"Error: {str(e)}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 
 # Backward compatibility function for fire-based usage
-def expand_file(file_path, output_path=None, strict=True, **context):
+def expand_file(file_path, output_path=None, strict=True, template_dir=None, **context):
     """
     Backward compatibility function for fire-based usage
 
@@ -311,9 +494,10 @@ def expand_file(file_path, output_path=None, strict=True, **context):
         file_path: Path to template file
         output_path: Optional output file path
         strict: Whether to use strict mode (default: True)
+        template_dir: Directory to search for template files (optional)
         **context: Additional context variables for template
     """
-    expander = JinjaFileExpander(strict_mode=strict)
+    expander = JinjaFileExpander(template_dir=template_dir, strict_mode=strict)
     return expander.expand_file(file_path, context, output_path)
 
 
