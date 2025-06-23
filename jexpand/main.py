@@ -98,6 +98,7 @@ class JinjaFileExpander:
             {
                 "include_file": self._include_file,
                 "include_folder": self._include_folder,
+                "include_repo_folder": self._include_repo_folder,
                 "file_exists": self._file_exists,
                 "file_size": self._file_size,
                 "file_extension": self._file_extension,
@@ -183,7 +184,7 @@ class JinjaFileExpander:
             if not file_paths:
                 message = f"<!-- No files found matching pattern '{pattern}' in {folder_path} -->"
                 if self.strict_mode:
-                    return message
+                    raise FileNotFoundError(f"No files found matching pattern '{pattern}' in {folder_path}")
                 return message
 
             # Process files based on format
@@ -349,10 +350,21 @@ class JinjaFileExpander:
         import re
 
         # Convert standalone {file_path} to {{ include_file('file_path') }}
-        # Only match single braces that are not part of double braces
-        template_content = re.sub(
-            r"(?<!\{)\{([^{}]+)\}(?!\})", r"{{ include_file('\1') }}", template_content
-        )
+        # Only convert simple {something} that's not already Jinja2 syntax
+        # Skip {% %}, {{ }}, {# #} patterns
+        lines = template_content.split('\n')
+        converted_lines = []
+        
+        for line in lines:
+            # Don't convert lines that already contain Jinja2 syntax
+            if '{%' in line or '{{' in line or '{#' in line:
+                converted_lines.append(line)
+            else:
+                # Convert simple {file_path} patterns
+                converted_line = re.sub(r'\{([^{}]+)\}', r"{{ include_file('\1') }}", line)
+                converted_lines.append(converted_line)
+        
+        template_content = '\n'.join(converted_lines)
 
         # Create template from the (possibly converted) content
         template = self.env.from_string(template_content)
@@ -364,6 +376,72 @@ class JinjaFileExpander:
         else:
             print(result, end="")  # Don't add extra newline
 
+        return result
+
+    def compile_to_intermediate(self, template_path, context=None, intermediate_path=None):
+        """
+        Compile template to intermediate form (Feature 1.5)
+        
+        This converts the template syntax but doesn't fully expand includes yet.
+        Useful for debugging or two-stage processing.
+        """
+        context = context or {}
+        
+        # Read the template content
+        if os.path.isabs(template_path):
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_content = f.read()
+        else:
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_content = f.read()
+        
+        # Auto-detect and convert old {file_path} syntax to Jinja2
+        import re
+        
+        # Convert standalone {file_path} to {{ include_file('file_path') }}
+        # Only convert simple {something} that's not already Jinja2 syntax
+        # Skip {% %}, {{ }}, {# #} patterns
+        lines = template_content.split('\n')
+        converted_lines = []
+        
+        for line in lines:
+            # Don't convert lines that already contain Jinja2 syntax
+            if '{%' in line or '{{' in line or '{#' in line:
+                converted_lines.append(line)
+            else:
+                # Convert simple {file_path} patterns
+                converted_line = re.sub(r'\{([^{}]+)\}', r"{{ include_file('\1') }}", line)
+                converted_lines.append(converted_line)
+        
+        template_content = '\n'.join(converted_lines)
+        
+        # This is the intermediate form - converted but not expanded
+        intermediate_content = template_content
+        
+        if intermediate_path:
+            with open(intermediate_path, 'w', encoding='utf-8') as f:
+                f.write(intermediate_content)
+        
+        return intermediate_content
+
+    def expand_intermediate(self, intermediate_content, context=None, output_path=None):
+        """
+        Expand intermediate form to final form (Feature 1.5)
+        
+        Takes the intermediate template and fully expands it.
+        """
+        context = context or {}
+        
+        # Create template from intermediate content and render
+        template = self.env.from_string(intermediate_content)
+        result = template.render(**context)
+        
+        if output_path:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(result)
+        else:
+            print(result, end="")
+        
         return result
 
     def simple_expand(self, template_path, context=None, output_path=None):
@@ -395,6 +473,39 @@ class JinjaFileExpander:
 
         return result
 
+    def _include_repo_folder(self, url, dirs_to_checkout, branch="main", format_as="xml"):
+        """Include files from a remote Git repository"""
+        try:
+            from .load_from_repo import download_repo_folder, filter_files
+            
+            content_dict = download_repo_folder(url, dirs_to_checkout, branch)
+            
+            if format_as == "xml":
+                xml_content = []
+                for path, content in content_dict.items():
+                    # Remove leading slash from path
+                    clean_path = path.lstrip('/')
+                    xml_content.append(f"<file path='{clean_path}'>")
+                    xml_content.append(content)
+                    xml_content.append("</file>")
+                return "\n\n".join(xml_content)
+            elif format_as == "blocks":
+                blocks = []
+                for path, content in content_dict.items():
+                    clean_path = path.lstrip('/')
+                    block = f"<!-- File: {clean_path} -->\n{content}"
+                    blocks.append(block)
+                return "\n\n".join(blocks)
+            elif format_as == "dict":
+                return {path.lstrip('/'): content for path, content in content_dict.items()}
+            else:  # format_as == "content"
+                return "\n\n".join(content_dict.values())
+                
+        except Exception as e:
+            if self.strict_mode:
+                raise RuntimeError(f"Error downloading from {url}: {str(e)}")
+            return f"<!-- Error downloading from {url}: {str(e)} -->"
+
 
 # def expand_file(file_path, output_path=None, strict=True, template_dir=None):
 #         expander = JinjaFileExpander(
@@ -418,6 +529,8 @@ Examples:
   jexpand template.md -o expanded.md     # Write to file
   jexpand template.md --output result.md # Write to file
   jexpand template.md --no-strict        # Non-strict mode (don't fail on missing files)
+  jexpand template.md --intermediate intermediate.md # Compile to intermediate form
+  jexpand template.md --intermediate intermediate.md --final final.md # Two-stage compilation
 
 Template Features:
   {{ include_file('path/to/file') }}           # Include file contents
@@ -425,6 +538,7 @@ Template Features:
   {{ include_folder('path/to/folder') }}       # Include all files in folder
   {{ include_folder('src', pattern='*.py') }}  # Include Python files only
   {{ include_folder('src', recursive=true, format_as='blocks') }}  # Recursive with file labels
+  {{ include_repo_folder('https://github.com/user/repo', ['src', 'docs']) }}  # Include from Git repo
   {% if file_exists('optional.txt') %}        # Conditional inclusion
   {{ file_size('data.csv') }}                 # File size in bytes
   {{ basename('/path/to/file.txt') }}         # Get filename
@@ -438,6 +552,18 @@ Template Features:
         "--output",
         dest="output_file",
         help="Output file path (default: print to stdout)",
+    )
+
+    parser.add_argument(
+        "--intermediate",
+        dest="intermediate_file",
+        help="Compile to intermediate form and save to this file",
+    )
+
+    parser.add_argument(
+        "--final",
+        dest="final_file",
+        help="When using --intermediate, expand the intermediate form to this final file",
     )
 
     parser.add_argument(
@@ -459,7 +585,7 @@ Template Features:
         help="Directory to search for template files (default: current directory)",
     )
 
-    parser.add_argument("--version", action="version", version="jexpand 1.0.3")
+    parser.add_argument("--version", action="version", version="jexpand 1.0.4")
 
     args = parser.parse_args()
 
@@ -470,13 +596,29 @@ Template Features:
 
     # Create expander
     try:
-        expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
-
-        if args.output_file:
-            print(
-                f"Template expanded successfully to: {args.output_file}",
-                file=sys.stderr,
+        # expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
+        
+        expander = JinjaFileExpander(template_dir=args.template_dir, strict_mode=args.strict)
+        
+        if args.intermediate_file:
+            # Two-stage compilation (Feature 1.5)
+            intermediate_content = expander.compile_to_intermediate(
+                args.input_file, intermediate_path=args.intermediate_file
             )
+            
+            if args.final_file:
+                # Expand intermediate to final
+                expander.expand_intermediate(intermediate_content, output_path=args.final_file)
+                print(f"Template compiled to intermediate: {args.intermediate_file}", file=sys.stderr)
+                print(f"Intermediate expanded to final: {args.final_file}", file=sys.stderr)
+            else:
+                print(f"Template compiled to intermediate: {args.intermediate_file}", file=sys.stderr)
+        else:
+            # Standard single-stage expansion
+            expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
+            
+            if args.output_file:
+                print(f"Template expanded successfully to: {args.output_file}", file=sys.stderr)
 
     except Exception as e:
         import traceback
