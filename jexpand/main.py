@@ -117,8 +117,19 @@ class JinjaFileExpander:
             }
         )
 
-    def _include_file(self, file_path, encoding='utf-8', default=''):
-        """Include the contents of a file"""
+    def _include_file(self, file_path, encoding='utf-8', default='', start_line=None, end_line=None, line_numbers=None):
+        """
+        Include the contents of a file, optionally with line range and line numbers
+        
+        Args:
+            file_path: Path to the file to include
+            encoding: File encoding (default: utf-8)
+            default: Default content if file not found (non-strict mode)
+            start_line: Starting line number (1-based, inclusive)
+            end_line: Ending line number (1-based, inclusive)
+            line_numbers: Add line numbers ('short' for "1 |", 'full' for "line 1 |", None for no line numbers)
+        """
+        assert line_numbers in [None, "short", "full"], f"Error: line_numbers must be None, 'short', or 'full'"
         if file_path.startswith('~'):
             file_path = os.path.expanduser(file_path)
         try:
@@ -128,7 +139,63 @@ class JinjaFileExpander:
                 return default or f"<!-- File not found: {file_path} -->"
 
             with open(file_path, "r", encoding=encoding) as f:
-                return f.read()
+                content = f.read()
+                
+            # If no line range specified, return full content
+            if start_line is None and end_line is None:
+                if line_numbers is not None:
+                    content = self._line_numbers_filter(content, line_numbers, start_line_offset=1)
+                return content
+                
+            # Split content into lines
+            lines = content.splitlines(keepends=True)
+            total_lines = len(lines)
+            
+            # Handle edge cases for line numbers
+            if start_line is not None:
+                if start_line < 1:
+                    if self.strict_mode:
+                        raise ValueError(f"start_line must be >= 1, got {start_line}")
+                    start_line = 1
+                if start_line > total_lines:
+                    if self.strict_mode:
+                        raise ValueError(f"start_line {start_line} exceeds file length {total_lines}")
+                    return default or f"<!-- start_line {start_line} exceeds file length {total_lines} -->"
+            
+            if end_line is not None:
+                if end_line < 1:
+                    if self.strict_mode:
+                        raise ValueError(f"end_line must be >= 1, got {end_line}")
+                    end_line = 1
+                if end_line > total_lines:
+                    if self.strict_mode:
+                        raise ValueError(f"end_line {end_line} exceeds file length {total_lines}")
+                    end_line = total_lines
+            
+            # Check if start_line > end_line
+            if start_line is not None and end_line is not None and start_line > end_line:
+                if self.strict_mode:
+                    raise ValueError(f"start_line {start_line} cannot be greater than end_line {end_line}")
+                return default or f"<!-- start_line {start_line} > end_line {end_line} -->"
+            
+            # Determine slice boundaries (convert from 1-based to 0-based indexing)
+            start_idx = (start_line - 1) if start_line is not None else 0
+            end_idx = end_line if end_line is not None else total_lines
+            
+            # Extract the specified lines
+            selected_lines = lines[start_idx:end_idx]
+            
+            # Join the lines back together
+            result_content = ''.join(selected_lines)
+            
+            # Apply line numbers if requested
+            if line_numbers is not None:
+                # Calculate the correct starting line offset
+                line_offset = start_line if start_line is not None else 1
+                result_content = self._line_numbers_filter(result_content, line_numbers, start_line_offset=line_offset)
+            
+            return result_content
+            
         except Exception as e:
             if self.strict_mode:
                 raise
@@ -143,6 +210,7 @@ class JinjaFileExpander:
         separator="\n\n",
         encoding="utf-8",
         include_folder_name=True,
+        line_numbers=None,
     ):
         """
         Include contents of all files in a folder
@@ -159,6 +227,7 @@ class JinjaFileExpander:
             encoding: File encoding to use
         """
         import glob
+        assert line_numbers in [None, "short", "full"], f"Error: line_numbers must be None, 'short', or 'full'"
 
         if folder_path.startswith("~"):
             folder_path = os.path.expanduser(folder_path)
@@ -194,7 +263,10 @@ class JinjaFileExpander:
                     try:
                         with open(file_path, "r", encoding=encoding) as f:
                             relative_path = os.path.relpath(file_path, folder_path)
-                            result[relative_path] = f.read()
+                            content = f.read()
+                            if line_numbers is not None:
+                                content = self._line_numbers_filter(content, line_numbers)
+                            result[relative_path] = content
                     except Exception as e:
                         if self.strict_mode:
                             raise
@@ -206,6 +278,8 @@ class JinjaFileExpander:
                     try:
                         with open(file_path, "r", encoding=encoding) as f:
                             content = f.read()
+                            if line_numbers is not None:
+                                content = self._line_numbers_filter(content, line_numbers)
                             relative_path = os.path.relpath(file_path, folder_path)
                             if include_folder_name:
                                 base_name = os.path.basename(folder_path)
@@ -227,6 +301,8 @@ class JinjaFileExpander:
                     try:
                         with open(file_path, "r", encoding=encoding) as f:
                             content = f.read()
+                            if line_numbers is not None:
+                                content = self._line_numbers_filter(content, line_numbers)
                             relative_path = os.path.relpath(file_path, folder_path)
                             block = f"<!-- File: {relative_path} -->\n{content}"
                             blocks.append(block)
@@ -242,7 +318,10 @@ class JinjaFileExpander:
                 for file_path in file_paths:
                     try:
                         with open(file_path, "r", encoding=encoding) as f:
-                            contents.append(f.read())
+                            content = f.read()
+                            if line_numbers is not None:
+                                content = self._line_numbers_filter(content, line_numbers)
+                            contents.append(content)
                     except Exception as e:
                         if self.strict_mode:
                             raise
@@ -291,7 +370,7 @@ class JinjaFileExpander:
         """Comment out each line"""
         return '\n'.join(f"{comment_char} {line}" for line in content.splitlines())
 
-    def _line_numbers_filter(self, content, format="short"):
+    def _line_numbers_filter(self, content, format="short", start_line_offset=1):
         """
         Add line numbers to content
 
@@ -300,12 +379,13 @@ class JinjaFileExpander:
             format: How to format line numbers:
                 - "full": "line 1 | content"
                 - "short": "1 | content"
+            start_line_offset: Starting line number (default: 1)
         """
         lines = content.splitlines()
         if format == "full":
-            numbered_lines = [f"line {i+1} | {line}" for i, line in enumerate(lines)]
+            numbered_lines = [f"line {i+start_line_offset} | {line}" for i, line in enumerate(lines)]
         else:  # short format
-            numbered_lines = [f"{i+1} | {line}" for i, line in enumerate(lines)]
+            numbered_lines = [f"{i+start_line_offset} | {line}" for i, line in enumerate(lines)]
         return "\n".join(numbered_lines)
 
     def expand_string(self, template_string, context=None):
@@ -546,6 +626,8 @@ Template Features:
     )
 
     parser.add_argument("input_file", help="Path to the template file to expand")
+    parser.add_argument("-m", "--mode", help="Mode to use for expansion", choices=["cli", "normal"])
+    
 
     parser.add_argument(
         "-o",
@@ -588,6 +670,25 @@ Template Features:
     parser.add_argument("--version", action="version", version="jexpand 1.0.4")
 
     args = parser.parse_args()
+    
+    
+    if args.mode == "cli":
+        # CLI mode: create temporary file with include_folder content
+        import tempfile
+        assert os.path.isdir(args.input_file), f"Error: Folder '{args.input_file}' not found"
+        # Create template content that includes the entire folder
+        template_content = f"{{{{ include_folder('{args.input_file}') }}}}"
+        
+        # Write to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as temp_file:
+            temp_file.write(template_content)
+            temp_file_path = temp_file.name
+        
+        print(f"Created temporary file with include_folder content: {temp_file_path}", file=sys.stderr)
+        
+        # Update args to use the temporary file as input
+        args.input_file = temp_file_path
+        # usage: jexpand /Users/ohadr/Auto-Craft-Bot/docs --mode cli -o expanded.md
 
     # Check if input file exists
     if not os.path.isfile(args.input_file):
@@ -625,6 +726,8 @@ Template Features:
         print(f"Error: {str(e)}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
+
+
 
 
 # Backward compatibility function for fire-based usage
