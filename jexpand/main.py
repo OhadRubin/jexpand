@@ -117,7 +117,7 @@ class JinjaFileExpander:
             }
         )
 
-    def _include_file(self, file_path, encoding='utf-8', default='', start_line=None, end_line=None, line_numbers=None):
+    def _include_file(self, file_path, encoding='utf-8', default='', start_line=None, end_line=None, line_numbers=None, format_as=None):
         """
         Include the contents of a file, optionally with line range and line numbers
         
@@ -145,6 +145,10 @@ class JinjaFileExpander:
             if start_line is None and end_line is None:
                 if line_numbers is not None:
                     content = self._line_numbers_filter(content, line_numbers, start_line_offset=1)
+                if format_as == "xml":
+                    return f"<file path='{file_path}'>\n{content}\n</file>"
+                else:
+                    return content
                 return content
                 
             # Split content into lines
@@ -194,7 +198,10 @@ class JinjaFileExpander:
                 line_offset = start_line if start_line is not None else 1
                 result_content = self._line_numbers_filter(result_content, line_numbers, start_line_offset=line_offset)
             
-            return result_content
+            if format_as == "xml":
+                return f"<file path='{file_path}'>\n{result_content}\n</file>"
+            else:
+                return result_content
             
         except Exception as e:
             if self.strict_mode:

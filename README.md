@@ -30,7 +30,33 @@ jexpand template.md --template-dir /path/to/templates
 
 # Show help
 jexpand --help
+
+# CLI mode: Include entire directory contents
+jexpand /path/to/directory --mode cli -o output.md
 ```
+
+#### CLI Mode for Directory Processing
+
+JExpand includes a special CLI mode that allows you to quickly include all files from a directory without writing a template:
+
+```bash
+# Include all files from a directory
+jexpand /path/to/docs --mode cli -o documentation.md
+
+# This is equivalent to creating a template with:
+# {{ include_folder('/path/to/docs') }}
+```
+
+The CLI mode automatically:
+- Creates a temporary template with `{{ include_folder('directory_path') }}`
+- Processes all files in the specified directory
+- Outputs them in XML format with file paths and contents
+- Cleans up the temporary template file
+
+This is particularly useful for:
+- Quick documentation generation from source directories
+- Exporting entire project structures
+- Creating backups of directory contents in readable format
 
 ### Python Module
 
