@@ -22,6 +22,10 @@ jexpand template.md
 jexpand template.md -o expanded.md
 jexpand template.md --output expanded.md
 
+# Copy to clipboard
+jexpand template.md -c
+jexpand template.md --clipboard
+
 # Non-strict mode (don't fail on missing files)
 jexpand template.md --no-strict
 
@@ -58,11 +62,32 @@ This is particularly useful for:
 - Exporting entire project structures
 - Creating backups of directory contents in readable format
 
+### Clipboard Support
+
+JExpand can copy the expanded template directly to your system clipboard:
+
+```bash
+# Copy expanded template to clipboard
+jexpand template.md --clipboard
+jexpand template.md -c
+
+# Also works with CLI mode
+jexpand /path/to/docs --mode cli --clipboard
+```
+
+This is useful for:
+- Quickly sharing expanded content
+- Pasting into documents or editors
+- Working with templates without creating intermediate files
+
 ### Python Module
 
 ```bash
 # Run as module
 python -m jexpand template.md -o expanded.md
+
+# Copy to clipboard via module
+python -m jexpand template.md --clipboard
 ```
 
 ### Python API
@@ -81,6 +106,12 @@ expander.expand_file(
 
 # Expand to string
 result = expander.expand_file("template.md")
+
+# Copy to clipboard
+expander.expand_file(
+    template_path="template.md",
+    copy_to_clipboard=True
+)
 
 # Simple expansion with {file} syntax
 result = expander.simple_expand("simple_template.md")

@@ -709,7 +709,7 @@ Template Features:
         help="Copy result to clipboard instead of printing to stdout",
     )
 
-    parser.add_argument("--version", action="version", version="jexpand 1.0.4")
+    parser.add_argument("--version", action="version", version="jexpand 1.0.6")
 
     args = parser.parse_args()
     
