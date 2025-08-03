@@ -14,6 +14,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "jinja2>=3.0.0",
+        "pyperclip>=1.8.0",
     ],
     entry_points={
         "console_scripts": [

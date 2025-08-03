@@ -59,6 +59,7 @@ import argparse
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 from jinja2.exceptions import TemplateNotFound
+import pyperclip
 
 
 class StringLoader(BaseLoader):
@@ -395,13 +396,23 @@ class JinjaFileExpander:
             numbered_lines = [f"{i+start_line_offset} | {line}" for i, line in enumerate(lines)]
         return "\n".join(numbered_lines)
 
+    def copy_to_clipboard(self, content):
+        """Copy content to system clipboard"""
+        try:
+            pyperclip.copy(content)
+            return True
+        except Exception as e:
+            if self.strict_mode:
+                raise RuntimeError(f"Failed to copy to clipboard: {str(e)}")
+            return False
+
     def expand_string(self, template_string, context=None):
         """Expand a template string"""
         context = context or {}
         template = self.env.from_string(template_string)
         return template.render(**context)
 
-    def expand_file(self, template_path, context=None, output_path=None):
+    def expand_file(self, template_path, context=None, output_path=None, copy_to_clipboard=False):
         """Expand a template file"""
         context = context or {}
 
@@ -460,6 +471,11 @@ class JinjaFileExpander:
         if output_path:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(result)
+        elif copy_to_clipboard:
+            if self.copy_to_clipboard(result):
+                print("Content copied to clipboard successfully", file=sys.stderr)
+            else:
+                print("Failed to copy to clipboard", file=sys.stderr)
         else:
             print(result, end="")  # Don't add extra newline
 
@@ -511,7 +527,7 @@ class JinjaFileExpander:
         
         return intermediate_content
 
-    def expand_intermediate(self, intermediate_content, context=None, output_path=None):
+    def expand_intermediate(self, intermediate_content, context=None, output_path=None, copy_to_clipboard=False):
         """
         Expand intermediate form to final form (Feature 1.5)
         
@@ -526,12 +542,17 @@ class JinjaFileExpander:
         if output_path:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(result)
+        elif copy_to_clipboard:
+            if self.copy_to_clipboard(result):
+                print("Content copied to clipboard successfully", file=sys.stderr)
+            else:
+                print("Failed to copy to clipboard", file=sys.stderr)
         else:
             print(result, end="")
         
         return result
 
-    def simple_expand(self, template_path, context=None, output_path=None):
+    def simple_expand(self, template_path, context=None, output_path=None, copy_to_clipboard=False):
         """
         Simple expansion with {file_path} syntax conversion to Jinja2
 
@@ -555,6 +576,11 @@ class JinjaFileExpander:
         if output_path:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(result)
+        elif copy_to_clipboard:
+            if self.copy_to_clipboard(result):
+                print("Content copied to clipboard successfully", file=sys.stderr)
+            else:
+                print("Failed to copy to clipboard", file=sys.stderr)
         else:
             print(result, end="")
 
@@ -615,6 +641,8 @@ Examples:
   jexpand template.md                    # Print to stdout
   jexpand template.md -o expanded.md     # Write to file
   jexpand template.md --output result.md # Write to file
+  jexpand template.md -c                 # Copy to clipboard
+  jexpand template.md --clipboard        # Copy to clipboard
   jexpand template.md --no-strict        # Non-strict mode (don't fail on missing files)
   jexpand template.md --intermediate intermediate.md # Compile to intermediate form
   jexpand template.md --intermediate intermediate.md --final final.md # Two-stage compilation
@@ -674,6 +702,13 @@ Template Features:
         help="Directory to search for template files (default: current directory)",
     )
 
+    parser.add_argument(
+        "-c",
+        "--clipboard",
+        action="store_true",
+        help="Copy result to clipboard instead of printing to stdout",
+    )
+
     parser.add_argument("--version", action="version", version="jexpand 1.0.4")
 
     args = parser.parse_args()
@@ -716,17 +751,20 @@ Template Features:
             
             if args.final_file:
                 # Expand intermediate to final
-                expander.expand_intermediate(intermediate_content, output_path=args.final_file)
+                expander.expand_intermediate(intermediate_content, output_path=args.final_file, copy_to_clipboard=args.clipboard)
                 print(f"Template compiled to intermediate: {args.intermediate_file}", file=sys.stderr)
                 print(f"Intermediate expanded to final: {args.final_file}", file=sys.stderr)
             else:
                 print(f"Template compiled to intermediate: {args.intermediate_file}", file=sys.stderr)
         else:
-            # Standard single-stage expansion
-            expand_file(args.input_file, args.output_file, args.strict, args.template_dir)
+            # Standard single-stage expansion  
+            expander.expand_file(args.input_file, context={}, output_path=args.output_file, copy_to_clipboard=args.clipboard)
             
             if args.output_file:
                 print(f"Template expanded successfully to: {args.output_file}", file=sys.stderr)
+            elif args.clipboard:
+                # Success message already printed by expand_file method
+                pass
 
     except Exception as e:
         import traceback
@@ -738,7 +776,7 @@ Template Features:
 
 
 # Backward compatibility function for fire-based usage
-def expand_file(file_path, output_path=None, strict=True, template_dir=None, **context):
+def expand_file(file_path, output_path=None, strict=True, template_dir=None, copy_to_clipboard=False, **context):
     """
     Backward compatibility function for fire-based usage
 
@@ -747,10 +785,11 @@ def expand_file(file_path, output_path=None, strict=True, template_dir=None, **c
         output_path: Optional output file path
         strict: Whether to use strict mode (default: True)
         template_dir: Directory to search for template files (optional)
+        copy_to_clipboard: Whether to copy result to clipboard (default: False)
         **context: Additional context variables for template
     """
     expander = JinjaFileExpander(template_dir=template_dir, strict_mode=strict)
-    return expander.expand_file(file_path, context, output_path)
+    return expander.expand_file(file_path, context, output_path, copy_to_clipboard)
 
 
 # Example usage and backward compatibility
