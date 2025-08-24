@@ -56,10 +56,13 @@ You will be given several files, your goal is to convert the implementation.
 import os
 import sys
 import argparse
+import io
+import contextlib
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 from jinja2.exceptions import TemplateNotFound
 import pyperclip
+from .shorthand_parser import ShorthandParser
 
 
 class StringLoader(BaseLoader):
@@ -81,6 +84,7 @@ class JinjaFileExpander:
             strict_mode: If True, raises errors for missing files. If False, returns placeholder text.
         """
         self.strict_mode = strict_mode
+        self.shorthand_parser = ShorthandParser()
 
         if template_dir:
             loader = FileSystemLoader(template_dir)
@@ -406,6 +410,49 @@ class JinjaFileExpander:
                 raise RuntimeError(f"Failed to copy to clipboard: {str(e)}")
             return False
 
+    def process_jexpand_blocks(self, content):
+        """Process <jexpand> blocks by executing Python code and replacing with output"""
+        import re
+        
+        # Find all <jexpand>...</jexpand> blocks
+        jexpand_pattern = r'<jexpand>\s*(.*?)\s*</jexpand>'
+        
+        def execute_python_code(match):
+            python_code = match.group(1).strip()
+            
+            if not python_code:
+                return ""
+            
+            try:
+                # Capture stdout during code execution
+                stdout_capture = io.StringIO()
+                
+                # Create a namespace that includes common globals
+                exec_globals = {
+                    "__builtins__": __builtins__,
+                    "__name__": "__main__",
+                }
+                local_namespace = {}
+                
+                with contextlib.redirect_stdout(stdout_capture):
+                    exec(python_code, exec_globals, local_namespace)
+                
+                # Get the captured output
+                output = stdout_capture.getvalue()
+                return output
+                
+            except Exception as e:
+                error_msg = f"Error executing Python code: {str(e)}"
+                if self.strict_mode:
+                    raise RuntimeError(error_msg)
+                else:
+                    return f"<!-- {error_msg} -->"
+        
+        # Replace all <jexpand> blocks with their execution results
+        processed_content = re.sub(jexpand_pattern, execute_python_code, content, flags=re.DOTALL)
+        
+        return processed_content
+
     def expand_string(self, template_string, context=None):
         """Expand a template string"""
         context = context or {}
@@ -444,10 +491,16 @@ class JinjaFileExpander:
                 with open(template_path, "r", encoding="utf-8") as f:
                     template_content = f.read()
 
-        # Auto-detect and convert old {file_path} syntax to Jinja2
+        # Auto-detect and convert shorthand and old {file_path} syntax to Jinja2
         import re
 
-        # Convert standalone {file_path} to {{ include_file('file_path') }}
+        # Process <jexpand> blocks for Python code execution FIRST
+        template_content = self.process_jexpand_blocks(template_content)
+
+        # Then apply shorthand parser conversion (f("path") -> {{ include_file('path') }})
+        template_content = self.shorthand_parser.parse_content(template_content)
+
+        # Then convert standalone {file_path} to {{ include_file('file_path') }}
         # Only convert simple {something} that's not already Jinja2 syntax
         # Skip {% %}, {{ }}, {# #} patterns
         lines = template_content.split('\n')
@@ -498,10 +551,16 @@ class JinjaFileExpander:
             with open(template_path, "r", encoding="utf-8") as f:
                 template_content = f.read()
         
-        # Auto-detect and convert old {file_path} syntax to Jinja2
+        # Auto-detect and convert shorthand and old {file_path} syntax to Jinja2
         import re
         
-        # Convert standalone {file_path} to {{ include_file('file_path') }}
+        # Process <jexpand> blocks for Python code execution FIRST
+        template_content = self.process_jexpand_blocks(template_content)
+        
+        # Then apply shorthand parser conversion (f("path") -> {{ include_file('path') }})
+        template_content = self.shorthand_parser.parse_content(template_content)
+        
+        # Then convert standalone {file_path} to {{ include_file('file_path') }}
         # Only convert simple {something} that's not already Jinja2 syntax
         # Skip {% %}, {{ }}, {# #} patterns
         lines = template_content.split('\n')
@@ -657,6 +716,16 @@ Template Features:
   {% if file_exists('optional.txt') %}        # Conditional inclusion
   {{ file_size('data.csv') }}                 # File size in bytes
   {{ basename('/path/to/file.txt') }}         # Get filename
+
+Shorthand Syntax (auto-converted to Jinja2):
+  f("path")                -> {{ include_file('path') }}
+  f_lines("path")          -> {{ include_file('path', line_numbers='short') }}
+  f_s10_e30("path")        -> {{ include_file('path', start_line=10, end_line=30) }}
+  file_xml("path")         -> {{ include_file('path', format_as='xml') }}
+  f_xml_lines("path")      -> {{ include_file('path', format_as='xml', line_numbers='short') }}
+  d("path")                -> {{ include_folder('path') }}
+  d_xml("path")            -> {{ include_folder('path', format_as='xml') }}
+  dir_xml_lines("path")    -> {{ include_folder('path', format_as='xml', line_numbers='short') }}
         """,
     )
 
@@ -709,7 +778,7 @@ Template Features:
         help="Copy result to clipboard instead of printing to stdout",
     )
 
-    parser.add_argument("--version", action="version", version="jexpand 1.0.6")
+    parser.add_argument("--version", action="version", version="jexpand 1.0.9")
 
     args = parser.parse_args()
     
