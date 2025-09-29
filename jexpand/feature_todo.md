@@ -79,3 +79,29 @@ def _include_repo_folder(self, url, dirs_to_checkout, branch="main", format_as="
 ```
 
 This would make jexpand incredibly powerful for documentation generation, code analysis, and creating templates that pull live content from multiple repositories!
+
+
+
+Feature 5:
+
+
+# Better shorthand parser:
+
+
+ -d/--directory is converted into include_folder
+
+-f --file is converted into `include_file`
+-x is converted into `format_as='xml'
+-e is converted into `end_line=`
+-s is converted into `start_line=`
+-l is converted into `line_numbers='short'`
+--full is conveted into `line_numbers='full'`
+
+>>>>| [flags] path
+
+Where `>>>>|` signifies that this line is a jexpand line.
+
+alternatively: `>>>>| [flags] src/systems/crafting_system.js:L321-L369` is also converted into -s and -e i.e into `>>>>| [flags] -s 321 -e 369 src/systems/crafting_system.js`
+
+
+

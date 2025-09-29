@@ -1,0 +1,87 @@
+{#
+  Fixed version of the pathfinder bundle template
+  This assembles multiple JS modules into a single file
+#}
+
+// Pathfinder Bundle - Generated {{ "now" | strftime('%Y-%m-%d %H:%M:%S') }}
+// Dependencies resolved and modules inlined
+
+const { performance } = require('perf_hooks');
+const { Vec3 } = require('vec3');
+const nbt = require('prismarine-nbt');
+const { EventEmitter, on } = require('events');
+const { PlayerState } = require('prismarine-physics');
+
+// ============================================================================
+// JSON Data Files
+// ============================================================================
+
+// Interactable blocks data
+const interactable_json = {{ include_file('lib/interactable.json') }};
+
+// Passable entities data  
+const passableEntities_json = {{ include_file('lib/passableEntities.json') }};
+
+// ============================================================================
+// Utility Modules (No Dependencies)
+// ============================================================================
+
+// Shape utilities
+const ShapeUtils = (() => {
+{{ include_file('lib/shapes.js', start_line=3) | indent(2) }}
+  
+  return { getShapeFaceCenters };
+})();
+const { getShapeFaceCenters } = ShapeUtils;
+
+// Binary Heap implementation
+{{ include_file('lib/heap.js') | replace('module.exports = BinaryHeapOpenSet', '') }}
+const Heap = BinaryHeapOpenSet;
+
+// Move class
+{{ include_file('lib/move.js') | replace('module.exports = Move', '') }}
+
+// Lock utility  
+{{ include_file('lib/lock.js') | replace('module.exports = Lock', '') }}
+
+// Physics helper
+{{ include_file('lib/physics.js') | replace('module.exports = Physics', '') }}
+
+// ============================================================================
+// Core Modules (Depend on Utilities)
+// ============================================================================
+
+// Goals module
+const Goals = (() => {
+{{ include_file('lib/goals.js', start_line=4) | indent(2) | replace('module.exports = {', 'return {') }}
+})();
+
+// A* pathfinding algorithm
+const AStar = (() => {
+{{ include_file('lib/astar.js', start_line=5) | indent(2) | replace('const BinaryHeapOpenSet = require', '// const BinaryHeapOpenSet = require') | replace('module.exports = AStar', 'return AStar') }}
+})();
+
+// Movement definitions
+const Movements = (() => {
+{{ include_file('lib/movements.js', start_line=5) | indent(2) | replace("require('./move')", "Move") | replace("require('./passableEntities.json')", "passableEntities_json") | replace("require('./interactable.json')", "interactable_json") | replace('module.exports = Movements', 'return Movements') }}
+})();
+
+// Goto utility
+const gotoUtil = (() => {
+{{ include_file('lib/goto.js') | indent(2) | replace('module.exports = ', 'return ') }}
+})();
+
+// ============================================================================
+// Main Module Export
+// ============================================================================
+
+function inject(bot) {
+{{ include_file('index.js', start_line=16) | indent(2) | replace("require('./lib/movements')", "Movements") | replace("require('./lib/goals')", "Goals") | replace('stateMovements = new Movements(bot)', 'stateMovements = new Movements(bot)') }}
+}
+
+// Export compatibility
+inject.Movements = Movements;
+inject.goals = Goals; 
+inject.Move = Move;
+
+module.exports = inject;

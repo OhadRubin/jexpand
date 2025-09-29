@@ -453,6 +453,47 @@ class JinjaFileExpander:
         
         return processed_content
 
+    def process_set_rem_blocks(self, content):
+        """Process <set_rem> blocks by extracting content and collecting reminders"""
+        import re
+        
+        reminders = []
+        
+        # Handle <set_rem title="...">content</set_rem> with title
+        def extract_and_collect_with_title(match):
+            title = match.group(1).replace('\\n', '\n')  # Handle escaped newlines
+            content = match.group(2).strip()
+            
+            # Collect for end-of-document append
+            reminders.append(f"{title}\n{content}")
+            
+            # Return just the content for inline replacement
+            return content
+        
+        # Handle <set_rem>content</set_rem> without title
+        def extract_and_collect_no_title(match):
+            content = match.group(1).strip()
+            
+            # Collect for end-of-document append with reminder tags
+            reminders.append(f"<reminder>\n{content}\n</reminder>")
+            
+            # Return just the content for inline replacement
+            return content
+        
+        # First process blocks with title attribute
+        set_rem_with_title_pattern = r'<set_rem\s+title="([^"]*)">\s*(.*?)\s*</set_rem>'
+        processed_content = re.sub(set_rem_with_title_pattern, extract_and_collect_with_title, content, flags=re.DOTALL)
+        
+        # Then process blocks without title attribute
+        set_rem_no_title_pattern = r'<set_rem>\s*(.*?)\s*</set_rem>'
+        processed_content = re.sub(set_rem_no_title_pattern, extract_and_collect_no_title, processed_content, flags=re.DOTALL)
+        
+        # Append collected reminders at the end
+        if reminders:
+            processed_content += "\n\n" + "\n\n".join(reminders)
+        
+        return processed_content
+
     def expand_string(self, template_string, context=None):
         """Expand a template string"""
         context = context or {}
@@ -496,6 +537,9 @@ class JinjaFileExpander:
 
         # Process <jexpand> blocks for Python code execution FIRST
         template_content = self.process_jexpand_blocks(template_content)
+
+        # Process <set_rem> blocks for reminder collection
+        template_content = self.process_set_rem_blocks(template_content)
 
         # Then apply shorthand parser conversion (f("path") -> {{ include_file('path') }})
         template_content = self.shorthand_parser.parse_content(template_content)
@@ -556,6 +600,9 @@ class JinjaFileExpander:
         
         # Process <jexpand> blocks for Python code execution FIRST
         template_content = self.process_jexpand_blocks(template_content)
+        
+        # Process <set_rem> blocks for reminder collection
+        template_content = self.process_set_rem_blocks(template_content)
         
         # Then apply shorthand parser conversion (f("path") -> {{ include_file('path') }})
         template_content = self.shorthand_parser.parse_content(template_content)
@@ -726,6 +773,13 @@ Shorthand Syntax (auto-converted to Jinja2):
   d("path")                -> {{ include_folder('path') }}
   d_xml("path")            -> {{ include_folder('path', format_as='xml') }}
   dir_xml_lines("path")    -> {{ include_folder('path', format_as='xml', line_numbers='short') }}
+
+Python Code Execution:
+  <jexpand>                        # Execute Python code and replace with output
+  files = ["src/main.py", "src/utils.py"]
+  for f in files:
+      print(f'file_xml("{f}")')   # Generates shorthand calls
+  </jexpand>
         """,
     )
 

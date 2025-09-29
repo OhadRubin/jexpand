@@ -1,0 +1,95 @@
+{% set file_map = {
+    'lib/astar.js': 1,
+    'lib/goals.js': 2,
+    'lib/goto.js': 3,
+    'lib/heap.js': 4,
+    'lib/interactable.json': 5,
+    'lib/lock.js': 6,
+    'lib/move.js': 7,
+    'lib/movements.js': 8,
+    'lib/passableEntities.json': 9,
+    'lib/physics.js': 10,
+    'lib/shapes.js': 11,
+    'index.js': 12
+} %}
+
+{#
+  This template assembles the final JavaScript file by including code segments
+  in a dependency-resolved order. It replaces the Node.js module system
+  with a single-file structure using constants and IIFEs.
+#}
+const { performance } = require('perf_hooks');
+const { Vec3 } = require('vec3');
+const nbt = require('prismarine-nbt');
+const { EventEmitter, on } = require('events');
+const { PlayerState } = require('prismarine-physics');
+
+// Source: lib/interactable.json
+const interactable_json = {{ include_file(file_map['lib/interactable.json'], start_line=1, end_line=136) }};
+
+// Source: lib/passableEntities.json
+const passableEntities_json = {{ include_file(file_map['lib/passableEntities.json'], start_line=1, end_line=30) }};
+
+// Source: lib/shapes.js
+const { getShapeFaceCenters } = (() => {
+{{ include_file(file_map['lib/shapes.js'], start_line=3, end_line=21) }}
+{{ include_file(file_map['lib/shapes.js'], start_line=23, end_line=23) }}
+})();
+
+// Source: lib/heap.js
+const Heap = class BinaryHeapOpenSet
+{{ include_file(file_map['lib/heap.js'], start_line=1, end_line=79) | replace('class BinaryHeapOpenSet ', '') }};
+
+// Source: lib/move.js
+const Move = {{ include_file(file_map['lib/move.js'], start_line=3, end_line=14) }};
+
+// Source: lib/lock.js
+const Lock = {{ include_file(file_map['lib/lock.js'], start_line=3, end_line=47) }};
+
+// Source: lib/physics.js
+const Physics = {{ include_file(file_map['lib/physics.js'], start_line=3, end_line=121) }};
+
+// Source: lib/goto.js
+const gotoUtil = {{ include_file(file_map['lib/goto.js'], start_line=1, end_line=65) }};
+
+// Source: lib/goals.js
+const goals = (() => {
+{{ include_file(file_map['lib/goals.js'], start_line=4, end_line=475) }}
+{{ include_file(file_map['lib/goals.js'], start_line=477, end_line=492) }}
+})();
+
+// Source: lib/astar.js
+const AStar = (() => {
+{{ include_file(file_map['lib/astar.js'], start_line=5, end_line=123) }}
+{{ include_file(file_map['lib/astar.js'], start_line=125, end_line=125) }}
+})();
+
+// Source: lib/movements.js
+const Movements = (() => {
+{{ include_file(file_map['lib/movements.js'], start_line=5, end_line=677) | replace("require('./move')", "Move") | replace("require('./passableEntities.json')", "passableEntities_json") | replace("require('./interactable.json')", "interactable_json") }}
+{{ include_file(file_map['lib/movements.js'], start_line=679, end_line=679) }}
+})();
+
+// Source: index.js
+function inject (bot) {
+{{ include_file(file_map['index.js'], start_line=16, end_line=20) }}
+  let stateMovements = new Movements(bot);
+{{ include_file(file_map['index.js'], start_line=21, end_line=37) }}
+  bot.pathfinder = {}
+
+{{ include_file(file_map['index.js'], start_line=40, end_line=62) }}
+
+  bot.pathfinder.getPathTo = (movements, goal, timeout) => {
+{{ include_file(file_map['index.js'], start_line=65, end_line=69) }}
+  }
+
+{{ include_file(file_map['index.js'], start_line=71, end_line=158) }}
+
+  bot.pathfinder.goto = (goal) => {
+    return gotoUtil(bot, goal)
+  }
+
+{{ include_file(file_map['index.js'], start_line=163, end_line=638) }}
+}
+
+{{ include_file(file_map['index.js'], start_line=640, end_line=644) | replace("require('./lib/movements')", "Movements") | replace("require('./lib/goals')", "goals") }}
