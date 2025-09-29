@@ -25,6 +25,12 @@ def test_parser():
         ('d_xml("source/")', '{{ include_folder(\'source/\', format_as=\'xml\') }}'),
         ('d_lines("scripts/")', '{{ include_folder(\'scripts/\', line_numbers=\'short\') }}'),
         ('d_fulllines("examples/")', '{{ include_folder(\'examples/\', line_numbers=\'full\') }}'),
+        ('>>>>| src/file.py', '{{ include_file(\'src/file.py\') }}'),
+        ('>>>>| -d src/', '{{ include_folder(\'src/\') }}'),
+        ('>>>>| -f -s 10 -e 20 src/app.py', '{{ include_file(\'src/app.py\', start_line=10, end_line=20) }}'),
+        ('>>>>| -x -l templates/page.html', '{{ include_file(\'templates/page.html\', format_as=\'xml\', line_numbers=\'short\') }}'),
+        ('>>>>| --directory --full docs', '{{ include_folder(\'docs\', line_numbers=\'full\') }}'),
+        ('>>>>| -f src/module.py:L5-L15', '{{ include_file(\'src/module.py\', start_line=5, end_line=15) }}'),
     ]
     
     print("Testing shorthand parser...")

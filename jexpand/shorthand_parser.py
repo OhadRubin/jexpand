@@ -16,6 +16,7 @@ Supported shorthand syntax:
 """
 
 import re
+import shlex
 from typing import Dict, Callable, Optional
 
 
@@ -79,24 +80,143 @@ class ShorthandParser:
     
     def parse_line(self, line: str) -> str:
         """Parse a single line and convert shorthand syntax to Jinja2"""
+        converted_cli = self._convert_cli_shorthand(line)
+        if converted_cli is not None:
+            return converted_cli
+
         result = line
-        
+
         # Apply patterns in order (more specific patterns first)
         for pattern, replacement_func in self.patterns.items():
             result = re.sub(pattern, replacement_func, result)
-        
+
         return result
     
     def parse_content(self, content: str) -> str:
         """Parse entire content and convert all shorthand syntax"""
         lines = content.split('\n')
         parsed_lines = []
-        
+
         for line in lines:
             parsed_line = self.parse_line(line)
             parsed_lines.append(parsed_line)
-        
+
         return '\n'.join(parsed_lines)
+
+    def _convert_cli_shorthand(self, line: str) -> Optional[str]:
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+
+        if not stripped.startswith('>>>>|'):
+            return None
+
+        remainder = stripped[5:].strip()
+        if not remainder:
+            return line
+
+        try:
+            tokens = shlex.split(remainder)
+        except ValueError:
+            return line
+
+        include_func = 'include_file'
+        kwargs: Dict[str, object] = {}
+        path_tokens = []
+        i = 0
+
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token in ('-d', '--directory'):
+                include_func = 'include_folder'
+                i += 1
+                continue
+
+            if token in ('-f', '--file'):
+                include_func = 'include_file'
+                i += 1
+                continue
+
+            if token == '-x':
+                kwargs['format_as'] = 'xml'
+                i += 1
+                continue
+
+            if token == '-l':
+                kwargs['line_numbers'] = 'short'
+                i += 1
+                continue
+
+            if token == '--full':
+                kwargs['line_numbers'] = 'full'
+                i += 1
+                continue
+
+            if token == '-s':
+                i += 1
+                if i >= len(tokens):
+                    return line
+                try:
+                    kwargs['start_line'] = int(tokens[i])
+                except ValueError:
+                    return line
+                i += 1
+                continue
+
+            if token == '-e':
+                i += 1
+                if i >= len(tokens):
+                    return line
+                try:
+                    kwargs['end_line'] = int(tokens[i])
+                except ValueError:
+                    return line
+                i += 1
+                continue
+
+            path_tokens.extend(tokens[i:])
+            break
+
+        if not path_tokens:
+            return line
+
+        raw_path = ' '.join(path_tokens)
+        path, path_start, path_end = self._extract_line_spec(raw_path)
+
+        if path_start is not None and 'start_line' not in kwargs:
+            kwargs['start_line'] = path_start
+        if path_end is not None and 'end_line' not in kwargs:
+            kwargs['end_line'] = path_end
+
+        path = path.strip()
+        if not path:
+            return line
+
+        escaped_path = path.replace('\\', '\\\\').replace("'", "\\'")
+        args = [f"'{escaped_path}'"]
+
+        for key in ('format_as', 'start_line', 'end_line', 'line_numbers'):
+            if key not in kwargs:
+                continue
+            value = kwargs[key]
+            if isinstance(value, str):
+                args.append(f"{key}='{value}'")
+            else:
+                args.append(f"{key}={value}")
+
+        args_str = ', '.join(args)
+        converted = f"{{{{ {include_func}({args_str}) }}}}"
+        return indent + converted
+
+    def _extract_line_spec(self, path: str):
+        match = re.search(r':L?(\d+)(?:-L?(\d+))?$', path)
+        if not match:
+            return path, None, None
+
+        base_path = path[: match.start()]
+        start_val = int(match.group(1)) if match.group(1) else None
+        end_val = int(match.group(2)) if match.group(2) else None
+        return base_path, start_val, end_val
     
     def parse_file(self, input_path: str, output_path: Optional[str] = None) -> str:
         """Parse a file and optionally write the result to another file"""
