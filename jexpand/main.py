@@ -737,6 +737,40 @@ class JinjaFileExpander:
 #         )
 
 
+INIT_TEMPLATE = """\
+<set_rem>
+# Project Context Template
+#
+# Describe your project or task here. This section is preserved in the output.
+# Example: "We are implementing a benchmark. The latest vision is in `proposal.md`."
+</set_rem>
+
+# Include files using shorthand syntax:
+>>>>| -f -x path/to/file.p
+>>>>| -d -x src/
+>>>>| -f -x -l path/to/file.py
+
+# Example includes (uncomment and modify):
+>>>>| -f -x README.md
+>>>>| -f -x src/main.py
+>>>>| -d -x src/
+"""
+
+
+def init_command(args):
+    """Handle the init subcommand - create a new template file"""
+    output_path = args.output or "template.jexpand.md"
+
+    if os.path.exists(output_path) and not args.force:
+        print(f"Error: File '{output_path}' already exists. Use --force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+
+    with open(output_path, 'w') as f:
+        f.write(INIT_TEMPLATE)
+
+    print(f"Created template: {output_path}", file=sys.stderr)
+
+
 def main():
     """Main entry point with argparse"""
     parser = argparse.ArgumentParser(
@@ -744,6 +778,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  jexpand init                           # Create new template (template.jexpand.md)
+  jexpand init -o context.md             # Create template with custom name
   jexpand template.md                    # Print to stdout
   jexpand template.md -o expanded.md     # Write to file
   jexpand template.md --output result.md # Write to file
@@ -753,26 +789,10 @@ Examples:
   jexpand template.md --intermediate intermediate.md # Compile to intermediate form
   jexpand template.md --intermediate intermediate.md --final final.md # Two-stage compilation
 
-Template Features:
-  {{ include_file('path/to/file') }}           # Include file contents
-  {{ include_file('file.py') | code_block('python') }}  # Include with syntax highlighting
-  {{ include_folder('path/to/folder') }}       # Include all files in folder
-  {{ include_folder('src', pattern='*.py') }}  # Include Python files only
-  {{ include_folder('src', recursive=true, format_as='blocks') }}  # Recursive with file labels
-  {{ include_repo_folder('https://github.com/user/repo', ['src', 'docs']) }}  # Include from Git repo
-  {% if file_exists('optional.txt') %}        # Conditional inclusion
-  {{ file_size('data.csv') }}                 # File size in bytes
-  {{ basename('/path/to/file.txt') }}         # Get filename
-
 Shorthand Syntax (auto-converted to Jinja2):
-  f("path")                -> {{ include_file('path') }}
-  f_lines("path")          -> {{ include_file('path', line_numbers='short') }}
-  f_s10_e30("path")        -> {{ include_file('path', start_line=10, end_line=30) }}
-  file_xml("path")         -> {{ include_file('path', format_as='xml') }}
-  f_xml_lines("path")      -> {{ include_file('path', format_as='xml', line_numbers='short') }}
-  d("path")                -> {{ include_folder('path') }}
-  d_xml("path")            -> {{ include_folder('path', format_as='xml') }}
-  dir_xml_lines("path")    -> {{ include_folder('path', format_as='xml', line_numbers='short') }}
+  >>>>| -f -x path/to/file.py
+  >>>>| -d -x src/
+  >>>>| -f -x -l path/to/file.py
 
 Python Code Execution:
   <jexpand>                        # Execute Python code and replace with output
@@ -833,6 +853,25 @@ Python Code Execution:
     )
 
     parser.add_argument("--version", action="version", version="jexpand 1.0.9")
+
+    # Handle 'init' subcommand specially
+    if len(sys.argv) >= 2 and sys.argv[1] == "init":
+        init_parser = argparse.ArgumentParser(
+            prog="jexpand init",
+            description="Create a new jexpand template file"
+        )
+        init_parser.add_argument(
+            "-o", "--output",
+            help="Output file path (default: template.jexpand.md)"
+        )
+        init_parser.add_argument(
+            "-f", "--force",
+            action="store_true",
+            help="Overwrite existing file"
+        )
+        init_args = init_parser.parse_args(sys.argv[2:])
+        init_command(init_args)
+        return
 
     args = parser.parse_args()
     
