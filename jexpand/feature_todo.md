@@ -105,3 +105,9 @@ alternatively: `>>>>| [flags] src/systems/crafting_system.js:L321-L369` is also 
 
 
 
+Feature 6:
+Add an Ink TUI app, that works similarly to .planctl with respect to how it saves overlays.
+
+Add a feature where a `>>>>| --markdown 2011.03252v1.md` parses the markdown file and one can select using a tree interface all the nodes one needs in order to compile the prompt
+
+python generate_toc.py 2011.03252v1.md

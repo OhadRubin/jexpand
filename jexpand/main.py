@@ -771,6 +771,44 @@ def init_command(args):
     print(f"Created template: {output_path}", file=sys.stderr)
 
 
+def update_command():
+    """Handle the update subcommand - pull latest and reinstall"""
+    import subprocess
+
+    # Find the jexpand repo directory (where this file lives)
+    repo_dir = Path(__file__).parent.parent
+
+    print(f"Updating jexpand from {repo_dir}...", file=sys.stderr)
+
+    # Git pull
+    print("Running git pull...", file=sys.stderr)
+    result = subprocess.run(
+        ["git", "pull"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"git pull failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    print(result.stdout, file=sys.stderr)
+
+    # Reinstall with uv
+    print("Running uv pip install -e .", file=sys.stderr)
+    result = subprocess.run(
+        ["uv", "pip", "install", "-e", "."],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"uv pip install failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    print(result.stdout, file=sys.stderr)
+
+    print("jexpand updated successfully!", file=sys.stderr)
+
+
 def main():
     """Main entry point with argparse"""
     parser = argparse.ArgumentParser(
@@ -780,6 +818,7 @@ def main():
 Examples:
   jexpand init                           # Create new template (template.jexpand.md)
   jexpand init -o context.md             # Create template with custom name
+  jexpand update                         # Pull latest and reinstall from git
   jexpand template.md                    # Print to stdout
   jexpand template.md -o expanded.md     # Write to file
   jexpand template.md --output result.md # Write to file
@@ -871,6 +910,11 @@ Python Code Execution:
         )
         init_args = init_parser.parse_args(sys.argv[2:])
         init_command(init_args)
+        return
+
+    # Handle 'update' subcommand specially
+    if len(sys.argv) >= 2 and sys.argv[1] == "update":
+        update_command()
         return
 
     args = parser.parse_args()

@@ -5,6 +5,14 @@ Enhanced file expansion using Jinja2 templates with flexible functionality for i
 ## Installation
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/OhadRubin/jexpand/main/setup.sh | bash
+```
+
+This installs `jexpand` globally (no venv needed). Requires `git` and installs `uv` if not present.
+
+### Alternative: pip
+
+```bash
 pip install jexpand
 ```
 
