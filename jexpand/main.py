@@ -74,6 +74,15 @@ class StringLoader(BaseLoader):
         return self.template_string, None, lambda: True
 
 
+def osc52_copy(content):
+    import base64
+    encoded = base64.b64encode(content.encode('utf-8')).decode('ascii')
+    escape_sequence = f'\033]52;c;{encoded}\a'
+    with open('/dev/tty', 'w') as tty:
+        tty.write(escape_sequence)
+        tty.flush()
+
+
 class JinjaFileExpander:
     def __init__(self, template_dir=None, strict_mode=True):
         """
@@ -401,13 +410,14 @@ class JinjaFileExpander:
         return "\n".join(numbered_lines)
 
     def copy_to_clipboard(self, content):
-        """Copy content to system clipboard"""
+        method = os.environ.get("JEXPAND_CLIPBOARD", "pyperclip")
+        copy_fn = {"pyperclip": pyperclip.copy, "osc52": osc52_copy}[method]
         try:
-            pyperclip.copy(content)
+            copy_fn(content)
             return True
         except Exception as e:
             if self.strict_mode:
-                raise RuntimeError(f"Failed to copy to clipboard: {str(e)}")
+                raise RuntimeError(f"Failed to copy via {method}: {e}")
             return False
 
     def process_jexpand_blocks(self, content):
